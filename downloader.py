@@ -4,7 +4,7 @@ import os
 
 # URL base para os dados da Premier League (E0) no football-data.co.uk
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{season_code}/E0.csv"
-OUTPUT_DIR = "./app/"
+OUTPUT_DIR = "/app/"
 
 def get_season_codes(start_year=2020):
     """
@@ -105,3 +105,5 @@ if __name__ == "__main__":
             download_count += 1
 
     print(f"Download concluído. {download_count} de {len(season_codes_to_download)} arquivos baixados com sucesso.")
+
+```
