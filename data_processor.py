@@ -1,14 +1,26 @@
 import pandas as pd
 import numpy as np
 import os
+import glob # Adicionar import do glob
 
-FILENAMES = ['/app/E0_2324.csv', '/app/E0_2223.csv', '/app/E0_2122.csv']
+# Padrão para encontrar os arquivos CSV baixados no diretório /app/
+# Espera arquivos como E0_2021.csv, E0_2122.csv, E0_2324.csv etc.
+FILE_PATTERN = "./app/E0_*.csv"
 dataframes = []
 
 print("Starting data processing for LayAOAV target...")
 
-for filename in FILENAMES:
-    if os.path.exists(filename):
+# Lista os arquivos que correspondem ao padrão
+csv_files = glob.glob(FILE_PATTERN)
+csv_files.sort() # Garante uma ordem consistente, embora a data seja usada para ordenar depois
+
+if not csv_files:
+    print(f"No CSV files found in ./app/ matching pattern {FILE_PATTERN}. Ensure downloader.py has run successfully.")
+else:
+    print(f"Found the following CSV files to process: {csv_files}")
+    for filename in csv_files:
+        # O if os.path.exists(filename) não é estritamente necessário aqui,
+        # pois glob.glob só retorna arquivos existentes.
         print(f"Processing file: {filename}")
         try:
             df = pd.read_csv(filename)
@@ -17,11 +29,11 @@ for filename in FILENAMES:
             print(f"Warning: File {filename} not found during read.")
         except Exception as e:
             print(f"Warning: Could not read {filename} due to error: {e}")
-    else:
-        print(f"Warning: File {filename} does not exist. Previous download step might have failed or files are not in /app/.")
+    # else: # This else block is no longer needed as glob only returns existing files
+    #     print(f"Warning: File {filename} does not exist. Previous download step might have failed or files are not in /app/.")
 
 if not dataframes:
-    print("No dataframes were loaded. Ensure CSV files exist in /app/. Exiting.")
+    print("No dataframes were loaded. Ensure CSV files exist in ./app/. Exiting.")
 else:
     combined_df = pd.concat(dataframes, ignore_index=True)
     print(f"Combined dataframes. Total rows before processing: {len(combined_df)}")
@@ -80,7 +92,7 @@ else:
         else:
             print("Warning: 'Date' column not found for conversion and sorting.")
 
-        output_filepath = '/app/processed_data_lay_aoav.csv'
+        output_filepath = './app/processed_data_lay_aoav.csv'
         combined_df.to_csv(output_filepath, index=False)
 
         print(f"Data processed with LayAOAV target and saved to {output_filepath}")

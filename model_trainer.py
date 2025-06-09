@@ -211,7 +211,7 @@ else:
 
 # 6. Save Model
 print("\n--- Section 6: Saving Model ---")
-model_filename = '/app/model_lay_aoav.joblib' # Saving in /app for persistence if environment allows
+model_filename = './app/model_lay_aoav.joblib' # Saving in /app for persistence if environment allows
 joblib.dump(model, model_filename)
 print(f"Model saved to {model_filename}")
 
