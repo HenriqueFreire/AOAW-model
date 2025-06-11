@@ -33,8 +33,8 @@ def execute_script(script_name):
         return False
 
 def consult_specific_game_ah():
-    print("\n--- Consulta de Jogo Específico (Modelo 'Lay à Zebra') ---")
-    model_path = './app/model_asian_handicap.joblib'
+    print("\n--- Consulta de Jogo Específico (Modelo 'Lay à Zebra' - Features: Match Odds) ---")
+    model_path = './app/model_asian_handicap.joblib' # Modelo agora treinado com Match Odds
 
     if not os.path.exists(model_path):
         print(f"Modelo AH não encontrado em {model_path}. Treine o modelo primeiro (Opção 2 do menu).")
@@ -47,14 +47,15 @@ def consult_specific_game_ah():
         print(f"Erro ao carregar o modelo AH: {e}")
         return
 
-    print("Por favor, forneça as features para o jogo (formato decimal, ex: 2.50):")
+    print("Por favor, forneça as odds de Match Odds (formato decimal, ex: 2.50):")
 
-    feature_names_ah = ['B365H', 'B365D', 'B365A', 'PSCH', 'PSCA', 'PCAHH', 'PCAHA']
+    # Features simplificadas para o modelo atual
+    feature_names_ah = ['B365H', 'B365D', 'B365A']
     game_feature_values = []
 
     try:
         for feature_name in feature_names_ah:
-            value = float(input(f"Feature '{feature_name}': "))
+            value = float(input(f"Odd '{feature_name}': "))
             game_feature_values.append(value)
     except ValueError:
         print("Entrada inválida. Por favor, insira números decimais para as features.")
@@ -83,27 +84,27 @@ def consult_specific_game_ah():
 
 def main_menu():
     while True:
-        print("\n--- Menu Principal (Foco: Modelo Handicap Asiático 'Lay à Zebra') ---")
-        print("1. (Re)Baixar Dados e (Re)Processar para AH")
-        print("2. (Re)Treinar Modelo AH (2 primeiras temporadas)")
+        print("\n--- Menu Principal (Foco: Modelo Handicap Asiático 'Lay à Zebra' - Features: Match Odds) ---")
+        print("1. (Re)Baixar Dados e (Re)Processar para AH (Match Odds Only)")
+        print("2. (Re)Treinar Modelo AH (Match Odds Only, 2 primeiras temporadas)")
         print("3. Executar Backtesting do Modelo AH (Taxa de Acerto)")
-        print("4. Consultar Jogo Específico (Modelo AH)")
+        print("4. Consultar Jogo Específico (Modelo AH - Match Odds Only)") # Reativado
         print("5. Executar Pipeline AH Completo (Passos 1, 2, 3)")
         print("0. Sair")
 
         choice = input("Escolha uma opção: ")
 
         if choice == '1':
-            if execute_script('downloader.py'): # downloader.py permanece o mesmo
-                execute_script('data_processor.py') # data_processor.py agora é focado em AH
+            if execute_script('downloader.py'):
+                execute_script('data_processor.py')
         elif choice == '2':
-            execute_script('model_trainer.py') # model_trainer.py agora é focado em AH
+            execute_script('model_trainer.py')
         elif choice == '3':
-            execute_script('backtester.py')   # backtester.py agora é focado em AH
-        elif choice == '4':
-            consult_specific_game_ah() # Nova função de consulta para AH
+            execute_script('backtester.py')
+        elif choice == '4': # Reativado
+            consult_specific_game_ah()
         elif choice == '5':
-            print("--- Iniciando Pipeline AH Completo ---")
+            print("--- Iniciando Pipeline AH Completo (Features: Match Odds Only) ---")
             if execute_script('downloader.py'):
                 if execute_script('data_processor.py'):
                     if execute_script('model_trainer.py'):

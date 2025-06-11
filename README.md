@@ -13,6 +13,10 @@ Este documento fornece instruções sobre como configurar e executar este projet
 
 Com o Nix instalado, navegue até o diretório raiz do projeto (onde o arquivo `shell.nix` está localizado) no seu terminal e execute:
 
+## Meta de Avaliação do Modelo
+
+Para a estratégia "Lay à Zebra", o objetivo principal é alcançar uma **taxa de acerto igual ou superior a 95%** nas previsões do backtesting, onde um "acerto" significa que o modelo previu corretamente que a zebra não venceria (ou seja, `ZebraLosesOrDraws = 1`).
+
 ```bash
 nix-shell
 ```
@@ -46,7 +50,7 @@ Escolha uma opção:
 *   Em seguida, executa o `data_processor.py` que:
     *   Combina todos os CSVs baixados.
     *   Cria uma coluna `Season` (ano de início da temporada).
-    *   Mantém e processa colunas de odds de Match Odds (ex: `B365H,D,A`), Linhas de Handicap Asiático (ex: `PSCH, PSCA`), e Odds de Handicap Asiático (ex: `PCAHH, PCAHA`).
+    *   Mantém e processa colunas de odds de Match Odds (ex: `B365H,D,A`) como as principais features.
     *   Identifica a `Zebra` em cada jogo (time com maior odd de vitória).
     *   Cria a variável alvo `ZebraLosesOrDraws` (1 se a zebra perde ou empata, 0 se a zebra vence).
     *   Salva o resultado em `./app/processed_data_ah.csv`.
@@ -55,7 +59,7 @@ Escolha uma opção:
 *   Executa o `model_trainer.py`.
 *   Carrega `./app/processed_data_ah.csv`.
 *   Treina um modelo de Regressão Logística usando **apenas os dados das duas primeiras temporadas** disponíveis.
-*   As **features** utilizadas são: Odds de Match Odds (`B365H,D,A`), Linhas de AH (`PSCH, PSCA`), e Odds de AH (`PCAHH, PCAHA`).
+    *   As **features** utilizadas são exclusivamente as Odds de Match Odds (ex: `B365H,D,A`).
 *   O modelo treinado é salvo em `./app/model_asian_handicap.joblib`.
 
 **Opção 3: Executar Backtesting do Modelo AH**
@@ -73,7 +77,7 @@ Escolha uma opção:
     *   Taxa de Acerto (%).
 
 **Opção 4: Consultar Jogo Específico (Modelo AH)**
-*   Permite que você insira as features necessárias para o modelo AH: Odds de Match Odds (`B365H,D,A`), Linhas de AH (`PSCH, PSCA`), e Odds de AH (`PCAHH, PCAHA`).
+*   Permite que você insira as Odds de Match Odds (B365H, B365D, B365A) para um jogo hipotético.
 *   Carrega o modelo `./app/model_asian_handicap.joblib`.
 *   Exibe as probabilidades previstas pelo modelo para `ZebraLosesOrDraws` e uma sugestão.
 
