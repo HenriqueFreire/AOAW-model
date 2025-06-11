@@ -73,8 +73,24 @@ else:
             else:
                 print(f"Warning: Odds column {col} not found in combined_df. It will not be included.")
 
-        # Select relevant columns, now including the odds columns
-        cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'LayAOAV'] + odds_cols
+        # Create RelativeUnderdog feature
+        print("Creating 'RelativeUnderdog' feature...")
+        if 'PSCH' in combined_df.columns and 'PSCA' in combined_df.columns:
+            conditions = [
+                (combined_df['PSCH'] > combined_df['PSCA']), # Home is underdog
+                (combined_df['PSCA'] > combined_df['PSCH'])  # Away is underdog
+            ]
+            choices = [1, -1] # 1 for Home underdog, -1 for Away underdog
+            combined_df['RelativeUnderdog'] = np.select(conditions, choices, default=0)
+            combined_df['RelativeUnderdog'] = combined_df['RelativeUnderdog'].astype(int)
+            print("'RelativeUnderdog' feature created successfully.")
+        else:
+            print("Warning: 'PSCH' or 'PSCA' not found. 'RelativeUnderdog' feature cannot be created and will be omitted.")
+            # If it cannot be created, it simply won't be in cols_to_keep if added conditionally
+
+        # Select relevant columns, now including the odds columns and RelativeUnderdog
+        # Add 'RelativeUnderdog' to cols_to_keep. It will only be included in final_cols if it was successfully created.
+        cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'LayAOAV', 'RelativeUnderdog'] + odds_cols
 
         # Keep only existing columns from cols_to_keep to prevent KeyErrors
         # This ensures that if an odds column wasn't in the original CSVs, it's not forcefully added here if missing.

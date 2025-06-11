@@ -99,7 +99,24 @@ def run_backtesting():
     cluster_dummies_backtest = pd.get_dummies(backtest_df['match_cluster_id'], prefix='cluster', dtype=int)
 
     X_backtest = pd.concat([X_backtest, cluster_dummies_backtest], axis=1)
-    print(f"Added {cluster_dummies_backtest.shape[1]} cluster dummy features to X_backtest. Shape of X_backtest: {X_backtest.shape}")
+    print(f"Added {cluster_dummies_backtest.shape[1]} cluster dummy features to X_backtest. Shape of X_backtest after cluster features: {X_backtest.shape}")
+
+    # One-Hot Encode 'RelativeUnderdog' for the backtest set, if present in full_data_df
+    if 'RelativeUnderdog' in full_data_df.columns:
+        if 'RelativeUnderdog' in backtest_df.columns: # Should be true if in full_data_df
+            print("Applying One-Hot Encoding to 'RelativeUnderdog' for X_backtest...")
+            all_possible_underdog_states = sorted(full_data_df['RelativeUnderdog'].unique())
+            backtest_df['RelativeUnderdog'] = pd.Categorical(
+                backtest_df['RelativeUnderdog'],
+                categories=all_possible_underdog_states
+            )
+            underdog_dummies_backtest = pd.get_dummies(backtest_df['RelativeUnderdog'], prefix='Underdog', dtype=int)
+            X_backtest = pd.concat([X_backtest, underdog_dummies_backtest], axis=1)
+            print(f"Added {underdog_dummies_backtest.shape[1]} RelativeUnderdog dummy features to X_backtest. Shape of X_backtest after Underdog features: {X_backtest.shape}")
+        else:
+            print("Warning: 'RelativeUnderdog' found in full_data_df but not in backtest_df. Omitting Underdog features from X_backtest.")
+    else:
+        print("Warning: 'RelativeUnderdog' column not found in full_data_df. Proceeding without this feature in X_backtest.")
 
     y_backtest_actual = backtest_df[target_col].astype(int)
 

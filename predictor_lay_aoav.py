@@ -99,10 +99,31 @@ if __name__ == '__main__':
     cluster_dummies_new = pd.get_dummies(new_matches_sample_df['match_cluster_id'], prefix='cluster', dtype=int)
 
     X_new = pd.concat([X_new, cluster_dummies_new], axis=1)
-    print(f"Added {cluster_dummies_new.shape[1]} cluster dummy features to X_new. Shape of X_new: {X_new.shape}")
+    print(f"Added {cluster_dummies_new.shape[1]} cluster dummy features to X_new. Shape of X_new after cluster features: {X_new.shape}")
 
-    # Ensure X_new does not have NaNs that might have been introduced by pd.Categorical if a cluster_id was somehow not in all_possible_cluster_ids
-    # (though this shouldn't happen given the logic) or if original rolling features had NaNs not caught by earlier dropna.
+    # One-Hot Encode 'RelativeUnderdog' for the sample, if present in historical_df
+    if 'RelativeUnderdog' in historical_df.columns:
+        if 'RelativeUnderdog' in new_matches_sample_df.columns: # Check if also in sample, though it should be if in historical_df
+            print("Applying One-Hot Encoding to 'RelativeUnderdog' for X_new...")
+            all_possible_underdog_states = sorted(historical_df['RelativeUnderdog'].unique())
+            new_matches_sample_df['RelativeUnderdog'] = pd.Categorical(
+                new_matches_sample_df['RelativeUnderdog'],
+                categories=all_possible_underdog_states
+            )
+            underdog_dummies_new = pd.get_dummies(new_matches_sample_df['RelativeUnderdog'], prefix='Underdog', dtype=int)
+            X_new = pd.concat([X_new, underdog_dummies_new], axis=1)
+            print(f"Added {underdog_dummies_new.shape[1]} RelativeUnderdog dummy features to X_new. Shape of X_new after Underdog features: {X_new.shape}")
+        else:
+            # This case should ideally not happen if RelativeUnderdog is in historical_df and new_matches_sample_df is a slice
+            print("Warning: 'RelativeUnderdog' found in historical_df but not in new_matches_sample_df. Omitting Underdog features from X_new.")
+            # To ensure no missing columns if model expects them, create all possible underdog dummies with 0s.
+            # However, model_trainer.py also has a conditional addition, so if not present, model wasn't trained with them.
+            # This is aligned with model_trainer.py's behavior (trains without it if column is missing there).
+    else:
+        print("Warning: 'RelativeUnderdog' column not found in historical_df. Proceeding without this feature in X_new.")
+
+    # Ensure X_new does not have NaNs that might have been introduced by pd.Categorical
+    # or if original rolling features had NaNs not caught by earlier dropna.
     if X_new.isnull().sum().any().any():
         print("Warning: NaNs detected in X_new before prediction. This is unexpected. Filling with 0.")
         X_new.fillna(0, inplace=True)

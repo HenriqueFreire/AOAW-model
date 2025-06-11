@@ -80,7 +80,16 @@ X = df_featured[rolling_feature_cols].copy() # Use .copy() to avoid SettingWithC
 print("Applying One-Hot Encoding to 'match_cluster_id'...")
 cluster_dummies = pd.get_dummies(df_featured['match_cluster_id'], prefix='cluster', dtype=int)
 X = pd.concat([X, cluster_dummies], axis=1)
-print(f"Added {cluster_dummies.shape[1]} cluster dummy features. Shape of X: {X.shape}")
+print(f"Added {cluster_dummies.shape[1]} cluster dummy features. Shape of X after cluster features: {X.shape}")
+
+# One-Hot Encode 'RelativeUnderdog' if present
+if 'RelativeUnderdog' in df_featured.columns:
+    print("Applying One-Hot Encoding to 'RelativeUnderdog'...")
+    underdog_dummies = pd.get_dummies(df_featured['RelativeUnderdog'], prefix='Underdog', dtype=int)
+    X = pd.concat([X, underdog_dummies], axis=1)
+    print(f"Added {underdog_dummies.shape[1]} RelativeUnderdog dummy features. Shape of X after Underdog features: {X.shape}")
+else:
+    print("Warning: 'RelativeUnderdog' column not found. Proceeding without this feature.")
 
 y = df_featured[target_col].astype(int)
 
