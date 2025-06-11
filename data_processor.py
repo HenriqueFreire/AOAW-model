@@ -61,10 +61,23 @@ else:
         combined_df['LayAOAV'] = np.where(condition_lose_lay, 0, 1)
         print("Defined 'LayAOAV' target variable.")
 
-        # Select relevant columns
-        cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'LayAOAV']
+        # Define odds columns to be processed
+        odds_cols = ['PSCH', 'PSCD', 'PSCA', 'B365CH', 'B365CD', 'B365CA']
+
+        # Process odds columns: convert to numeric, coercing errors to NaN
+        print(f"Processing odds columns: {odds_cols}")
+        for col in odds_cols:
+            if col in combined_df.columns:
+                combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce')
+                print(f"Converted column {col} to numeric.")
+            else:
+                print(f"Warning: Odds column {col} not found in combined_df. It will not be included.")
+
+        # Select relevant columns, now including the odds columns
+        cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'LayAOAV'] + odds_cols
 
         # Keep only existing columns from cols_to_keep to prevent KeyErrors
+        # This ensures that if an odds column wasn't in the original CSVs, it's not forcefully added here if missing.
         final_cols = [col for col in cols_to_keep if col in combined_df.columns]
         combined_df = combined_df[final_cols]
         print(f"Selected columns. Current columns: {combined_df.columns.tolist()}")

@@ -58,8 +58,10 @@ if __name__ == "__main__":
     scripts_para_executar = [
         "downloader.py",
         "data_processor.py",
+        "cluster_features.py", # Nova adição
         "model_trainer.py",
-        "predictor_lay_aoav.py"
+        "predictor_lay_aoav.py",
+        "backtester.py"
     ]
 
     for script in scripts_para_executar:

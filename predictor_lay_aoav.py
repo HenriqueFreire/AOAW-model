@@ -3,68 +3,13 @@ import requests
 import pandas as pd
 import numpy as np
 import joblib
-from collections import deque # For get_rolling_features
+# from collections import deque # No longer needed
 
-# --- Helper Functions (copied from model_trainer.py for self-containment) ---
-def get_match_points(result_indicator, perspective):
-    if perspective == 'home':
-        if result_indicator == 'H': return 3
-        if result_indicator == 'D': return 1
-        return 0
-    elif perspective == 'away':
-        if result_indicator == 'A': return 3
-        if result_indicator == 'D': return 1
-        return 0
-    return 0
-
-def get_rolling_features(df, N=5, existing_home_stats=None, existing_away_stats=None):
-    # existing_home_stats and existing_away_stats are not used in this simplified version
-    # but kept in signature for potential future compatibility if needed.
-    # This version recalculates stats from the provided df.
-    df_copy = df.sort_values(by='Date').copy()
-
-    home_team_stats = {}
-    away_team_stats = {}
-
-    feature_names = [
-        'HomeTeam_RecentPoints', 'HomeTeam_RecentGoalsScored', 'HomeTeam_RecentGoalsConceded',
-        'AwayTeam_RecentPoints', 'AwayTeam_RecentGoalsScored', 'AwayTeam_RecentGoalsConceded'
-    ]
-    for col in feature_names:
-        df_copy[col] = np.nan
-
-    all_teams = pd.concat([df_copy['HomeTeam'], df_copy['AwayTeam']]).unique()
-    for team in all_teams:
-        home_team_stats[team] = deque(maxlen=N)
-        away_team_stats[team] = deque(maxlen=N)
-
-    for index, row in df_copy.iterrows():
-        home_team = row['HomeTeam']
-        away_team = row['AwayTeam']
-
-        if len(home_team_stats[home_team]) == N:
-            past_N_games = list(home_team_stats[home_team])
-            df_copy.loc[index, 'HomeTeam_RecentPoints'] = sum(g['points'] for g in past_N_games)
-            df_copy.loc[index, 'HomeTeam_RecentGoalsScored'] = sum(g['goals_scored'] for g in past_N_games)
-            df_copy.loc[index, 'HomeTeam_RecentGoalsConceded'] = sum(g['goals_conceded'] for g in past_N_games)
-
-        if len(away_team_stats[away_team]) == N:
-            past_N_games = list(away_team_stats[away_team])
-            df_copy.loc[index, 'AwayTeam_RecentPoints'] = sum(g['points'] for g in past_N_games)
-            df_copy.loc[index, 'AwayTeam_RecentGoalsScored'] = sum(g['goals_scored'] for g in past_N_games)
-            df_copy.loc[index, 'AwayTeam_RecentGoalsConceded'] = sum(g['goals_conceded'] for g in past_N_games)
-
-        home_points = get_match_points(row['FTR'], 'home')
-        home_team_stats[home_team].append({'points': home_points, 'goals_scored': row['FTHG'], 'goals_conceded': row['FTAG']})
-
-        away_points = get_match_points(row['FTR'], 'away')
-        away_team_stats[away_team].append({'points': away_points, 'goals_scored': row['FTAG'], 'goals_conceded': row['FTHG']})
-
-    return df_copy
+# Helper functions get_match_points and get_rolling_features are removed as features are pre-calculated.
 
 # --- Main Prediction Logic ---
 if __name__ == '__main__':
-    print("Starting predictor_lay_aoav.py script...")
+    print("Starting predictor_lay_aoav.py script with clustered data...")
 
     # 1. Load Model
     model_path = '/app/model_lay_aoav.joblib'
@@ -78,130 +23,103 @@ if __name__ == '__main__':
         print(f"Error loading model {model_path}: {e}")
         exit()
 
-    # 2. Data Acquisition and Initial Processing (mimicking model_trainer.py)
-    print("\n--- Acquiring and Preprocessing Data for Prediction Context ---")
-    BASE_URL = "https://www.football-data.co.uk/mmz4281/"
-    SEASONS = ['2324', '2223', '2122'] # Use same seasons as training for consistency
-    LEAGUE_CODES = ['E0']
-    downloaded_csv_paths = []
-    temp_dir = "/tmp"
-
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
-
-    for league_code in LEAGUE_CODES:
-        for season in SEASONS:
-            url = f"{BASE_URL}{season}/{league_code}.csv"
-            filepath = os.path.join(temp_dir, f"pred_dl_{league_code}_{season}.csv") # Prefix to avoid name clash
-            print(f"Attempting to download {url} to {filepath}")
-            try:
-                response = requests.get(url, timeout=20)
-                response.raise_for_status()
-                with open(filepath, 'wb') as f:
-                    f.write(response.content)
-                downloaded_csv_paths.append(filepath)
-                print(f"Successfully downloaded {filepath}")
-            except requests.exceptions.RequestException as e:
-                print(f"Error downloading {url}: {e}")
-
-    if not downloaded_csv_paths:
-        print("No CSV files downloaded for historical context. Exiting.")
+    # 2. Load Historical Clustered Data for Prediction Context
+    print("\n--- Loading Historical Clustered Data for Prediction Context ---")
+    # This file is expected to be created by cluster_features.py
+    # It should contain rolling features and 'match_cluster_id'.
+    try:
+        historical_df = pd.read_csv('/app/processed_data_clustered.csv', parse_dates=['Date'])
+        print(f"Successfully loaded /app/processed_data_clustered.csv. Shape: {historical_df.shape}")
+        historical_df.sort_values(by='Date', inplace=True)
+    except FileNotFoundError:
+        print("Error: /app/processed_data_clustered.csv not found. Please ensure cluster_features.py has run successfully.")
+        exit()
+    except Exception as e:
+        print(f"Error loading /app/processed_data_clustered.csv: {e}")
         exit()
 
-    dataframes = []
-    for path in downloaded_csv_paths:
-        if os.path.exists(path):
-            try:
-                df = pd.read_csv(path)
-                dataframes.append(df)
-            except Exception as e:
-                print(f"Could not read {path}: {e}")
-
-    if not dataframes:
-        print("No dataframes loaded from downloaded files. Exiting.")
+    if historical_df.empty:
+        print("Loaded historical_df from clustered data is empty. Exiting.")
         exit()
 
-    historical_df = pd.concat(dataframes, ignore_index=True)
-    print(f"Combined historical data. Total rows: {len(historical_df)}")
+    # Safety NaN drop (cluster_features.py should have handled NaNs for rolling features,
+    # but this is a safeguard for other potential NaNs or if the file is somehow corrupted)
+    historical_df.dropna(inplace=True)
+    print(f"Shape of historical_df after NaN drop: {historical_df.shape}")
 
-    # Preprocess historical_df (same as in model_trainer.py)
-    historical_df['FTAG'] = pd.to_numeric(historical_df['FTAG'], errors='coerce')
-    historical_df.dropna(subset=['FTAG', 'FTR'], inplace=True)
-    condition_lose_lay = (historical_df['FTR'].astype(str) == 'A') & (historical_df['FTAG'] >= 4)
-    historical_df['LayAOAV'] = np.where(condition_lose_lay, 0, 1)
-    cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'LayAOAV']
-    cols_present = [col for col in cols_to_keep if col in historical_df.columns] # Keep only available essential cols
-    historical_df = historical_df[cols_present]
-    historical_df['FTHG'] = pd.to_numeric(historical_df['FTHG'], errors='coerce')
-    historical_df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG'], inplace=True)
-    historical_df['FTHG'] = historical_df['FTHG'].astype(int)
-    historical_df['FTAG'] = historical_df['FTAG'].astype(int) # FTAG already made numeric and NaN-dropped
-    historical_df['Date'] = pd.to_datetime(historical_df['Date'], errors='coerce', dayfirst=True)
-    historical_df.dropna(subset=['Date'], inplace=True)
-    historical_df.sort_values(by='Date', inplace=True)
-    print(f"Historical data preprocessed. Shape: {historical_df.shape}")
-
+    if historical_df.empty:
+        print("Historical_df is empty after NaN drop. Exiting.")
+        exit()
 
     # 3. Simulate "New" Matches for Prediction
-    if len(historical_df) < 20: # Need enough data for meaningful context + sample
-        print("Not enough historical data to create a meaningful sample for prediction after processing. Exiting.")
+    # The historical_df now already contains pre-calculated rolling features and cluster_id
+    # We'll call it `all_data_featured` to align with previous naming, though it's just historical_df.
+    all_data_featured = historical_df
+
+    if len(all_data_featured) < 10: # Arbitrary small number, ensure enough data for a sample
+        print("Not enough historical data to create a meaningful sample for prediction. Exiting.")
         exit()
 
     # Take the last 10 matches as "new" data to predict
-    # The features for these will be calculated based on the games before them.
-    new_matches_sample_df = historical_df.iloc[-10:].copy()
-    print(f"Simulating prediction for the last {len(new_matches_sample_df)} matches from the dataset.")
+    new_matches_sample_df = all_data_featured.iloc[-10:].copy()
+    print(f"Simulating prediction for the last {len(new_matches_sample_df)} matches.")
 
-    # 4. Feature Engineering for New Matches
-    # The get_rolling_features function will calculate features for all rows.
-    # We pass the full historical_df because the function builds context internally.
-    # Then we select the part corresponding to new_matches_sample_df.
-    print("Calculating features for the full historical dataset...")
-    all_data_featured = get_rolling_features(historical_df.copy(), N=5) # Use .copy()
+    if new_matches_sample_df.empty:
+        print("The sample of new matches is empty. This should not happen if historical_df has enough data. Exiting.")
+        exit()
 
-    # Select the last N rows that correspond to new_matches_sample_df
-    # Ensure indices align if historical_df was re-indexed by get_rolling_features (it shouldn't be, but good practice)
-    new_matches_featured = all_data_featured.iloc[-len(new_matches_sample_df):].copy()
+    # Check if 'match_cluster_id' is present
+    if 'match_cluster_id' not in new_matches_sample_df.columns:
+        print("Error: 'match_cluster_id' column not found in new_matches_sample_df. Ensure cluster_features.py ran correctly.")
+        exit()
 
-    # Drop rows if key features (e.g., HomeTeam_RecentPoints) are NaN.
-    # This could happen for the very first few games in the overall dataset.
-    # For the *last* 10 games, this is less likely if N=5 and dataset is large enough.
-    key_feature_cols_for_nan_check = [
-        'HomeTeam_RecentPoints', 'AwayTeam_RecentPoints' # Check a key feature for both home and away
+    # 4. Prepare Features for "New" Matches (X_new)
+    print("Preparing features for new matches (X_new) including cluster dummies...")
+    rolling_feature_cols = [
+        'HomeTeam_RecentPoints', 'HomeTeam_RecentGoalsScored', 'HomeTeam_RecentGoalsConceded',
+        'AwayTeam_RecentPoints', 'AwayTeam_RecentGoalsScored', 'AwayTeam_RecentGoalsConceded'
     ]
-    new_matches_featured.dropna(subset=key_feature_cols_for_nan_check, inplace=True)
 
-    if new_matches_featured.empty:
-        print("No new matches left to predict after feature engineering and NaN drop. This might happen if the sample was too small or from the very start of the dataset.")
-        exit()
-    print(f"Features calculated for new matches. Shape of new_matches_featured: {new_matches_featured.shape}")
-
-    # 5. Make Predictions
-    feature_cols = ['HomeTeam_RecentPoints', 'HomeTeam_RecentGoalsScored', 'HomeTeam_RecentGoalsConceded',
-                    'AwayTeam_RecentPoints', 'AwayTeam_RecentGoalsScored', 'AwayTeam_RecentGoalsConceded']
-
-    # Ensure all feature columns are present in the new_matches_featured dataframe
-    missing_cols = [col for col in feature_cols if col not in new_matches_featured.columns]
-    if missing_cols:
-        print(f"Error: The following feature columns are missing from new_matches_featured: {missing_cols}. Cannot make predictions.")
+    # Verify all rolling feature columns are present
+    missing_rolling_features = [col for col in rolling_feature_cols if col not in new_matches_sample_df.columns]
+    if missing_rolling_features:
+        print(f"Error: Missing rolling feature columns in new_matches_sample_df: {missing_rolling_features}")
         exit()
 
-    X_new = new_matches_featured[feature_cols]
+    X_new = new_matches_sample_df[rolling_feature_cols].copy()
 
-    # One final check for NaNs in X_new that might have slipped through
-    if X_new.isnull().sum().any().any(): # .any().any() checks if any NaN exists in the entire DataFrame
-        print("Warning: NaNs detected in X_new just before prediction. Filling with 0. This should ideally be handled by earlier NaN checks.")
+    # One-Hot Encode 'match_cluster_id' for the sample
+    # To ensure consistency with training, convert 'match_cluster_id' to categorical
+    # using all possible categories from the entire historical_df (which should match training data context).
+    all_possible_cluster_ids = sorted(historical_df['match_cluster_id'].unique())
+    new_matches_sample_df['match_cluster_id'] = pd.Categorical(
+        new_matches_sample_df['match_cluster_id'],
+        categories=all_possible_cluster_ids
+    )
+    cluster_dummies_new = pd.get_dummies(new_matches_sample_df['match_cluster_id'], prefix='cluster', dtype=int)
+
+    X_new = pd.concat([X_new, cluster_dummies_new], axis=1)
+    print(f"Added {cluster_dummies_new.shape[1]} cluster dummy features to X_new. Shape of X_new: {X_new.shape}")
+
+    # Ensure X_new does not have NaNs that might have been introduced by pd.Categorical if a cluster_id was somehow not in all_possible_cluster_ids
+    # (though this shouldn't happen given the logic) or if original rolling features had NaNs not caught by earlier dropna.
+    if X_new.isnull().sum().any().any():
+        print("Warning: NaNs detected in X_new before prediction. This is unexpected. Filling with 0.")
         X_new.fillna(0, inplace=True)
 
+    # At this point, X_new should have the same columns as X_train in model_trainer.py
+    # A truly robust solution would involve loading the expected columns from training.
+    # For now, we assume the model object handles feature names or order, or they align by construction.
 
+    # 5. Make Predictions
     predictions = model.predict(X_new)
     probabilities = model.predict_proba(X_new)
 
     # 6. Display Predictions
     print("\n--- Predictions for Simulated New Matches ---")
-    # Iterate using index from new_matches_featured to ensure correct row alignment
-    for i, index_val in enumerate(new_matches_featured.index):
-        match_details = new_matches_featured.loc[index_val] # Use .loc with the actual index
+    # Iterate using index from new_matches_sample_df to ensure correct row alignment
+    for i, index_val in enumerate(new_matches_sample_df.index): # Iterate over the sample's index
+        match_details = new_matches_sample_df.loc[index_val] # Use .loc with the actual index from the sample
 
         home_team = match_details['HomeTeam']
         away_team = match_details['AwayTeam']
