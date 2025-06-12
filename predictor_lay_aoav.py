@@ -67,7 +67,7 @@ if __name__ == '__main__':
     print("Starting predictor_lay_aoav.py script...")
 
     # 1. Load Model
-    model_path = '/app/model_lay_aoav.joblib'
+    model_path = '/app/model_lay_aoav_backtest.joblib' # Updated model path
     if not os.path.exists(model_path):
         print(f"Error: Model file not found at {model_path}. Please train the model first using model_trainer.py.")
         exit()
@@ -129,9 +129,21 @@ if __name__ == '__main__':
     historical_df.dropna(subset=['FTAG', 'FTR'], inplace=True)
     condition_lose_lay = (historical_df['FTR'].astype(str) == 'A') & (historical_df['FTAG'] >= 4)
     historical_df['LayAOAV'] = np.where(condition_lose_lay, 0, 1)
-    cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR', 'LayAOAV']
+    # Expand cols_to_keep to include B365 odds for feature engineering
+    cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR',
+                    'B365H', 'B365D', 'B365A', 'LayAOAV']
     cols_present = [col for col in cols_to_keep if col in historical_df.columns] # Keep only available essential cols
     historical_df = historical_df[cols_present]
+
+    # Ensure B365 odds are numeric before they are used for new_matches_sample_df
+    odds_cols_to_convert = ['B365H', 'B365D', 'B365A']
+    for col in odds_cols_to_convert:
+        if col in historical_df.columns:
+            historical_df[col] = pd.to_numeric(historical_df[col], errors='coerce')
+        else:
+            print(f"Warning: Odds column {col} not found in historical_df. Predictions may fail or be inaccurate.")
+            historical_df[col] = np.nan # Add missing column as NaN to prevent KeyErrors later
+
     historical_df['FTHG'] = pd.to_numeric(historical_df['FTHG'], errors='coerce')
     historical_df.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG'], inplace=True)
     historical_df['FTHG'] = historical_df['FTHG'].astype(int)
@@ -148,60 +160,111 @@ if __name__ == '__main__':
         exit()
 
     # Take the last 10 matches as "new" data to predict
-    # The features for these will be calculated based on the games before them.
     new_matches_sample_df = historical_df.iloc[-10:].copy()
     print(f"Simulating prediction for the last {len(new_matches_sample_df)} matches from the dataset.")
 
-    # 4. Feature Engineering for New Matches
-    # The get_rolling_features function will calculate features for all rows.
-    # We pass the full historical_df because the function builds context internally.
-    # Then we select the part corresponding to new_matches_sample_df.
-    print("Calculating features for the full historical dataset...")
-    all_data_featured = get_rolling_features(historical_df.copy(), N=5) # Use .copy()
+    # 4. Feature Engineering for New Matches (Odds-based features)
+    # Ensure essential odds columns are present and numeric before calculations
+    odds_cols = ['B365H', 'B365D', 'B365A']
+    for col in odds_cols:
+        if col not in new_matches_sample_df.columns:
+            print(f"Error: Critical odds column {col} is missing in new_matches_sample_df. Cannot engineer features.")
+            exit() # Exit if essential odds columns are missing
+        new_matches_sample_df[col] = pd.to_numeric(new_matches_sample_df[col], errors='coerce')
 
-    # Select the last N rows that correspond to new_matches_sample_df
-    # Ensure indices align if historical_df was re-indexed by get_rolling_features (it shouldn't be, but good practice)
-    new_matches_featured = all_data_featured.iloc[-len(new_matches_sample_df):].copy()
-
-    # Drop rows if key features (e.g., HomeTeam_RecentPoints) are NaN.
-    # This could happen for the very first few games in the overall dataset.
-    # For the *last* 10 games, this is less likely if N=5 and dataset is large enough.
-    key_feature_cols_for_nan_check = [
-        'HomeTeam_RecentPoints', 'AwayTeam_RecentPoints' # Check a key feature for both home and away
-    ]
-    new_matches_featured.dropna(subset=key_feature_cols_for_nan_check, inplace=True)
-
-    if new_matches_featured.empty:
-        print("No new matches left to predict after feature engineering and NaN drop. This might happen if the sample was too small or from the very start of the dataset.")
+    # Drop rows if B365H, B365D, or B365A are NaN after conversion, as they are essential for feature engineering
+    new_matches_sample_df.dropna(subset=odds_cols, inplace=True)
+    if new_matches_sample_df.empty:
+        print("No matches left after dropping NaNs from essential odds columns. Cannot make predictions.")
         exit()
-    print(f"Features calculated for new matches. Shape of new_matches_featured: {new_matches_featured.shape}")
+
+    print("Calculating odds-based features for new matches...")
+    # 1. Implied Probabilities
+    new_matches_sample_df['ProbH'] = 1 / new_matches_sample_df['B365H']
+    new_matches_sample_df['ProbD'] = 1 / new_matches_sample_df['B365D']
+    new_matches_sample_df['ProbA'] = 1 / new_matches_sample_df['B365A']
+
+    # 2. Normalized Probabilities
+    new_matches_sample_df['TotalProb'] = new_matches_sample_df['ProbH'] + new_matches_sample_df['ProbD'] + new_matches_sample_df['ProbA']
+    new_matches_sample_df['NormProbH'] = new_matches_sample_df['ProbH'] / new_matches_sample_df['TotalProb']
+    new_matches_sample_df['NormProbD'] = new_matches_sample_df['ProbD'] / new_matches_sample_df['TotalProb']
+    new_matches_sample_df['NormProbA'] = new_matches_sample_df['ProbA'] / new_matches_sample_df['TotalProb']
+
+    # 3. Bookmaker's Margin
+    new_matches_sample_df['Margin'] = (new_matches_sample_df['TotalProb'] - 1) * 100
+
+    # 4. Odds Spreads/Ratios
+    new_matches_sample_df['SpreadHA'] = new_matches_sample_df['B365H'] - new_matches_sample_df['B365A']
+    new_matches_sample_df['RatioHA'] = new_matches_sample_df['B365H'] / (new_matches_sample_df['B365A'] + 1e-6) # Epsilon for safety
+
+    # 5. Log Odds (ensure positivity)
+    new_matches_sample_df['LogOddsH'] = np.log(new_matches_sample_df['B365H'].apply(lambda x: x if x > 0 else 1e-6))
+    new_matches_sample_df['LogOddsD'] = np.log(new_matches_sample_df['B365D'].apply(lambda x: x if x > 0 else 1e-6))
+    new_matches_sample_df['LogOddsA'] = np.log(new_matches_sample_df['B365A'].apply(lambda x: x if x > 0 else 1e-6))
+    print(f"Odds-based features calculated. Shape of new_matches_sample_df: {new_matches_sample_df.shape}")
+
+    # Remove or comment out get_rolling_features and its usage
+    # print("Calculating features for the full historical dataset...")
+    # all_data_featured = get_rolling_features(historical_df.copy(), N=5) # Use .copy()
+    # new_matches_featured = all_data_featured.iloc[-len(new_matches_sample_df):].copy()
+    # key_feature_cols_for_nan_check = [
+    #     'HomeTeam_RecentPoints', 'AwayTeam_RecentPoints'
+    # ]
+    # new_matches_featured.dropna(subset=key_feature_cols_for_nan_check, inplace=True)
+    # if new_matches_featured.empty:
+    #     print("No new matches left to predict after feature engineering and NaN drop...")
+    #     exit()
+    # print(f"Features calculated for new matches. Shape of new_matches_featured: {new_matches_featured.shape}")
+    new_matches_featured = new_matches_sample_df # Use the dataframe with new odds features
 
     # 5. Make Predictions
-    feature_cols = ['HomeTeam_RecentPoints', 'HomeTeam_RecentGoalsScored', 'HomeTeam_RecentGoalsConceded',
-                    'AwayTeam_RecentPoints', 'AwayTeam_RecentGoalsScored', 'AwayTeam_RecentGoalsConceded']
+    feature_cols = [
+        'B365H', 'B365D', 'B365A',
+        'ProbH', 'ProbD', 'ProbA', 'TotalProb',
+        'NormProbH', 'NormProbD', 'NormProbA', 'Margin',
+        'SpreadHA', 'RatioHA',
+        'LogOddsH', 'LogOddsD', 'LogOddsA'
+    ]
 
     # Ensure all feature columns are present in the new_matches_featured dataframe
     missing_cols = [col for col in feature_cols if col not in new_matches_featured.columns]
     if missing_cols:
-        print(f"Error: The following feature columns are missing from new_matches_featured: {missing_cols}. Cannot make predictions.")
+        print(f"Error: The following feature columns are missing from new_matches_featured: {missing_cols}. These should have been engineered. Cannot make predictions.")
         exit()
 
     X_new = new_matches_featured[feature_cols]
 
-    # One final check for NaNs in X_new that might have slipped through
-    if X_new.isnull().sum().any().any(): # .any().any() checks if any NaN exists in the entire DataFrame
-        print("Warning: NaNs detected in X_new just before prediction. Filling with 0. This should ideally be handled by earlier NaN checks.")
-        X_new.fillna(0, inplace=True)
+    # Final check for NaNs in X_new. Odds features should be robust, but this is a safeguard.
+    if X_new.isnull().sum().any().any():
+        print("Warning: NaNs detected in X_new just before prediction. This indicates an issue in feature engineering or data.")
+        # Option: fill with a placeholder if appropriate, or exit
+        # X_new.fillna(X_new.mean(), inplace=True) # Example: fill with mean, or 0
+        print("Dropping rows with NaNs in features before prediction.")
+        nan_rows_before = X_new.isnull().any(axis=1)
+        X_new = X_new.dropna()
+        new_matches_featured = new_matches_featured[~nan_rows_before] # Keep corresponding rows in new_matches_featured
+        if X_new.empty:
+            print("No data left after dropping NaNs from X_new. Cannot make predictions.")
+            exit()
 
+    if X_new.empty:
+        print("X_new is empty before predictions. Cannot proceed.")
+        exit()
 
     predictions = model.predict(X_new)
     probabilities = model.predict_proba(X_new)
 
     # 6. Display Predictions
-    print("\n--- Predictions for Simulated New Matches ---")
+    print("\n--- Predictions for Simulated New Matches (Odds-based Model) ---")
     # Iterate using index from new_matches_featured to ensure correct row alignment
+    # This is critical if X_new had rows dropped due to NaNs
     for i, index_val in enumerate(new_matches_featured.index):
-        match_details = new_matches_featured.loc[index_val] # Use .loc with the actual index
+        # Check if index_val is still in X_new (if rows were dropped from X_new but not new_matches_featured initially)
+        # This check is somewhat redundant now as new_matches_featured is filtered alongside X_new if NaNs are dropped.
+        if index_val not in X_new.index: # Should not happen if new_matches_featured is filtered with X_new
+            continue
+
+        match_details = new_matches_featured.loc[index_val]
 
         home_team = match_details['HomeTeam']
         away_team = match_details['AwayTeam']

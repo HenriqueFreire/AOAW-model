@@ -9,8 +9,8 @@ def run_backtesting():
     print("\n--- Iniciando Backtesting (Foco: Taxa de Acerto) ---")
 
     # 1. Carregar Modelo e Dados
-    model_path = './app/model_lay_aoav_backtest.joblib'
-    data_path = './app/processed_data_lay_aoav.csv'
+    model_path = '/app/model_lay_aoav_backtest.joblib' # Changed to absolute path
+    data_path = '/app/processed_data_lay_aoav.csv' # Changed to absolute path
 
     if not os.path.exists(model_path):
         print(f"Erro: Modelo não encontrado em {model_path}. Execute o treinamento do modelo para backtest primeiro.")
@@ -33,15 +33,29 @@ def run_backtesting():
         print(f"Erro ao carregar os dados: {e}")
         return
 
-    required_cols = ['Season', 'B365H', 'B365D', 'B365A', 'LayAOAV']
+    # Define the full list of features the model expects
+    feature_cols_definition = [
+        'B365H', 'B365D', 'B365A',
+        'ProbH', 'ProbD', 'ProbA', 'TotalProb',
+        'NormProbH', 'NormProbD', 'NormProbA', 'Margin',
+        'SpreadHA', 'RatioHA',
+        'LogOddsH', 'LogOddsD', 'LogOddsA'
+    ]
+    target_col_definition = 'LayAOAV'
+
+    required_cols = ['Season'] + feature_cols_definition + [target_col_definition]
     missing_cols = [col for col in required_cols if col not in df_full.columns]
     if missing_cols:
-        print(f"Erro: Colunas faltando nos dados processados: {missing_cols}")
+        print(f"Erro: Colunas faltando nos dados processados: {missing_cols}. Certifique-se que data_processor.py gerou todas as features.")
         return
 
-    for col in ['B365H', 'B365D', 'B365A', 'Season']:
+    # Convert all feature columns and Season to numeric, coercing errors.
+    # LayAOAV should already be numeric from data_processor.py.
+    for col in feature_cols_definition + ['Season']:
         df_full[col] = pd.to_numeric(df_full[col], errors='coerce')
-    df_full.dropna(subset=['B365H', 'B365D', 'B365A', 'Season', 'LayAOAV'], inplace=True)
+
+    # Drop rows with NaNs in any of the essential columns (Season, features, target)
+    df_full.dropna(subset=required_cols, inplace=True)
 
     if df_full.empty:
         print("Dados vazios após tratamento de NaNs.")
@@ -73,9 +87,9 @@ def run_backtesting():
     bets_made = 0
     bets_won = 0
 
-    feature_cols = ['B365H', 'B365D', 'B365A']
-    X_backtest = df_backtest[feature_cols]
-    y_actual_layaoav = df_backtest['LayAOAV'].astype(int)
+    # feature_cols is already defined as feature_cols_definition
+    X_backtest = df_backtest[feature_cols_definition]
+    y_actual_layaoav = df_backtest[target_col_definition].astype(int)
 
     predictions = model.predict(X_backtest)
 
@@ -108,5 +122,3 @@ def run_backtesting():
 
 if __name__ == '__main__':
     run_backtesting()
-
-```

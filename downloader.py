@@ -105,5 +105,3 @@ if __name__ == "__main__":
             download_count += 1
 
     print(f"Download concluído. {download_count} de {len(season_codes_to_download)} arquivos baixados com sucesso.")
-
-```

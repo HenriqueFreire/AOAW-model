@@ -5,7 +5,7 @@ import glob # Adicionar import do glob
 
 # Padrão para encontrar os arquivos CSV baixados no diretório /app/
 # Espera arquivos como E0_2021.csv, E0_2122.csv, E0_2324.csv etc.
-FILE_PATTERN = "./app/E0_*.csv"
+FILE_PATTERN = "/app/E0_*.csv" # Changed to absolute path
 dataframes = []
 
 print("Starting data processing for LayAOAV target...")
@@ -111,6 +111,48 @@ else:
              combined_df['FTAG'] = combined_df['FTAG'].astype(int)
         print("Ensured integer types for goal columns.")
 
+        # Convert odds columns to numeric, coercing errors
+        odds_cols = ['B365H', 'B365D', 'B365A']
+        for col in odds_cols:
+            if col in combined_df.columns:
+                combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce')
+
+        # Drop rows where essential odds are NaN after conversion
+        combined_df.dropna(subset=odds_cols, inplace=True)
+        print(f"Rows after converting odds to numeric and dropping NaNs: {len(combined_df)}")
+
+        # Feature Engineering from Odds
+        # 1. Implied Probabilities
+        combined_df['ProbH'] = 1 / combined_df['B365H']
+        combined_df['ProbD'] = 1 / combined_df['B365D']
+        combined_df['ProbA'] = 1 / combined_df['B365A']
+        print("Calculated Implied Probabilities.")
+
+        # 2. Normalized Probabilities
+        combined_df['TotalProb'] = combined_df['ProbH'] + combined_df['ProbD'] + combined_df['ProbA']
+        combined_df['NormProbH'] = combined_df['ProbH'] / combined_df['TotalProb']
+        combined_df['NormProbD'] = combined_df['ProbD'] / combined_df['TotalProb']
+        combined_df['NormProbA'] = combined_df['ProbA'] / combined_df['TotalProb']
+        print("Calculated Normalized Probabilities.")
+
+        # 3. Bookmaker's Margin
+        combined_df['Margin'] = (combined_df['TotalProb'] - 1) * 100
+        print("Calculated Bookmaker's Margin.")
+
+        # 4. Odds Spreads/Ratios
+        combined_df['SpreadHA'] = combined_df['B365H'] - combined_df['B365A']
+        # Add small epsilon to prevent division by zero, though odds are usually > 1
+        combined_df['RatioHA'] = combined_df['B365H'] / (combined_df['B365A'] + 1e-6)
+        print("Calculated Odds Spreads/Ratios.")
+
+        # 5. Log Odds
+        # Ensure odds are positive before taking log. Add 1e-6 to avoid log(0) or log(negative).
+        # Odds are typically > 1, so direct log is usually fine.
+        combined_df['LogOddsH'] = np.log(combined_df['B365H'].apply(lambda x: x if x > 0 else 1e-6))
+        combined_df['LogOddsD'] = np.log(combined_df['B365D'].apply(lambda x: x if x > 0 else 1e-6))
+        combined_df['LogOddsA'] = np.log(combined_df['B365A'].apply(lambda x: x if x > 0 else 1e-6))
+        print("Calculated Log Odds.")
+
         # Convert 'Date' column
         if 'Date' in combined_df.columns:
             print("Converting 'Date' column...")
@@ -131,7 +173,7 @@ else:
         else:
             print("Warning: 'Date' column not found for conversion and sorting.")
 
-        output_filepath = './app/processed_data_lay_aoav.csv'
+        output_filepath = '/app/processed_data_lay_aoav.csv' # Changed to absolute path
         combined_df.to_csv(output_filepath, index=False)
 
         print(f"Data processed with LayAOAV target and saved to {output_filepath}")
