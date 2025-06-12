@@ -74,7 +74,7 @@ else:
         print(f"Rows after dropping NaNs from FTHG: {len(combined_df)}")
 
 
-        condition_lose_lay = (combined_df['FTR'].astype(str) == 'A') & (combined_df['FTAG'] >= 4)
+        condition_lose_lay = (combined_df['FTR'].astype(str) == 'A')
         combined_df['LayAOAV'] = np.where(condition_lose_lay, 0, 1)
         print("Defined 'LayAOAV' target variable.")
 

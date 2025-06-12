@@ -127,7 +127,7 @@ if __name__ == '__main__':
     # Preprocess historical_df (same as in model_trainer.py)
     historical_df['FTAG'] = pd.to_numeric(historical_df['FTAG'], errors='coerce')
     historical_df.dropna(subset=['FTAG', 'FTR'], inplace=True)
-    condition_lose_lay = (historical_df['FTR'].astype(str) == 'A') & (historical_df['FTAG'] >= 4)
+    condition_lose_lay = (historical_df['FTR'].astype(str) == 'A')
     historical_df['LayAOAV'] = np.where(condition_lose_lay, 0, 1)
     # Expand cols_to_keep to include B365 odds for feature engineering
     cols_to_keep = ['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR',
@@ -283,7 +283,7 @@ if __name__ == '__main__':
 
         print(f"Match: {home_team} vs {away_team} on {match_date_str}")
         print(f"  Predicted LayAOAV: {predicted_class} (1=Lay, 0=Don't Lay/Risky)")
-        print(f"  Probability of LayAOAV (Visitor NOT Win by 4+ goals): {proba_lay_aoav:.4f}")
+        print(f"  Probability of LayAOAV (Visitor NOT Win): {proba_lay_aoav:.4f}")
         print(f"  Actual LayAOAV: {actual_outcome} (FTR: {actual_ftr}, Score: {actual_fthg}-{actual_ftag})")
         print("  ---")
 
